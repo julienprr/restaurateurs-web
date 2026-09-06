@@ -1,0 +1,73 @@
+name: CI/CD Front
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE: julienprr/restaurateurs-web
+
+jobs:
+  # Le front n'a pas de tests, mais un build cassé doit être vu avant d'aller
+  # plus loin. Le Dockerfile construit de toute façon le projet ; cette étape
+  # sert surtout à faire échouer les pull requests au bon endroit.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+  build-and-push:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build et push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: azure/setup-kubectl@v4
+
+      - name: Configurer kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Déployer
+        run: |
+          kubectl -n prod set image deployment/restaurateurs-web \
+            web=${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Vérifier le déploiement
+        run: kubectl -n prod rollout status deployment/restaurateurs-web --timeout=180s

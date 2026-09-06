@@ -1,0 +1,44 @@
+@import 'tailwindcss';
+
+/* Thème « Ardoise du bistrot » — voir brief §10 */
+@theme {
+  --color-board: #1f2e22;
+  --color-chalk: #f5f1e6;
+  --color-muted: #93a092;
+  --color-accent: #e8b94a;
+  --color-teal: #6fa8a0;
+  --color-line: #3a4d3b;
+
+  --font-display: 'Caveat', ui-serif, cursive;
+  --font-body: 'Work Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background-color: var(--color-board);
+  /* Évite que le rebond iOS révèle du blanc sous la page. */
+  overscroll-behavior-y: none;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--color-board);
+  color: var(--color-chalk);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grain de craie : deux dégradés très légers superposés au fond. */
+.chalk-surface {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgb(255 255 255 / 4%), transparent 45%),
+    radial-gradient(circle at 85% 80%, rgb(255 255 255 / 3%), transparent 40%);
+}
+
+/* Le « leader » en pointillés d'un menu imprimé, entre le nom et le statut. */
+.menu-leader {
+  flex: 1 1 auto;
+  min-width: 1.5rem;
+  border-bottom: 1px dotted var(--color-line);
+  transform: translateY(-0.3rem);
+}

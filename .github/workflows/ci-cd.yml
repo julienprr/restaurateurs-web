@@ -47,7 +47,11 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # Deux tags : le SHA sert aux déploiements suivants, « latest »
+          # uniquement au premier, quand les manifests sont appliqués à la main.
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

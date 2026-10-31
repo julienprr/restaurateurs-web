@@ -8,6 +8,7 @@
   import DrawResultSheet from '../lib/components/DrawResultSheet.svelte';
   import OutingCard from '../lib/components/OutingCard.svelte';
   import OutingDateSheet from '../lib/components/OutingDateSheet.svelte';
+  import PastOutings from '../lib/components/PastOutings.svelte';
   import { api } from '../lib/api.js';
   import { todayInParis } from '../lib/outings.js';
   import { navigate } from '../lib/router.svelte.js';
@@ -37,7 +38,7 @@
     retry: false
   }));
 
-  let tab = $state('liste'); // 'liste' | 'choisir'
+  let tab = $state('liste'); // 'liste' | 'choisir' | 'sorties'
   let selected = $state(null);
   let showMembers = $state(false);
   let drawResult = $state(null);
@@ -57,16 +58,20 @@
     const refresh = () => queryClient.invalidateQueries({ queryKey: ['restaurants', groupId] });
     // Une sortie qui change peut changer la liste : les voix repartent de
     // zéro après une annulation, le restaurant passe « déjà fait » à la clôture.
+    // Une sortie close rejoint l'historique.
     const refreshOuting = () => {
       queryClient.invalidateQueries({ queryKey: ['outing', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] });
       refresh();
     };
+    const refreshPast = () => queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] });
 
     const unsubscribe = subscribeToGroup(groupId, {
       connected: () => (live = true),
       votes_changed: refresh,
       restaurants_changed: refresh,
       outing_changed: refreshOuting,
+      ratings_changed: refreshPast,
       draw_result: (payload) => {
         drawResult = payload;
         queryClient.invalidateQueries({ queryKey: ['outing', groupId] });
@@ -238,6 +243,8 @@
       ? null
       : tab === 'liste'
         ? `${aTester.length} adresse${aTester.length > 1 ? 's' : ''} à tester`
+        : tab === 'sorties'
+          ? 'Nos sorties, notées'
         : !outing.data
           ? 'Aucune sortie prévue'
           : totalVotes === 0
@@ -279,6 +286,14 @@
         >
           La sortie
         </button>
+        <button
+          class="flex-1 rounded border border-dotted px-3 py-2 {tab === 'sorties'
+            ? 'border-accent text-accent'
+            : 'border-line text-muted'}"
+          onclick={() => (tab = 'sorties')}
+        >
+          Nos sorties
+        </button>
       </div>
 
       {#if tab === 'liste'}
@@ -306,6 +321,8 @@
             {/each}
           </div>
         {/if}
+      {:else if tab === 'sorties'}
+        <PastOutings groupId={id} />
       {:else if outing.isPending}
         <div class="flex flex-1 items-center justify-center">
           <p class="font-display text-2xl text-muted">Un instant...</p>
@@ -381,6 +398,8 @@
         <ChalkButton onclick={() => navigate(`/groupes/${id}/ajouter`)}>
           {#snippet children()}+ Ajouter une adresse{/snippet}
         </ChalkButton>
+      {:else if tab === 'sorties'}
+        <!-- On note depuis chaque sortie : pas d'action globale ici. -->
       {:else if outing.isSuccess && !outing.data}
         <ChalkButton onclick={() => (dateSheet = 'prevoir')} disabled={busy}>
           {#snippet children()}Prévoir une sortie{/snippet}

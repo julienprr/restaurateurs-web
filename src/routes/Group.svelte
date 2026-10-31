@@ -6,7 +6,10 @@
   import VoteRow from '../lib/components/VoteRow.svelte';
   import Sheet from '../lib/components/Sheet.svelte';
   import DrawResultSheet from '../lib/components/DrawResultSheet.svelte';
+  import OutingCard from '../lib/components/OutingCard.svelte';
+  import OutingDateSheet from '../lib/components/OutingDateSheet.svelte';
   import { api } from '../lib/api.js';
+  import { todayInParis } from '../lib/outings.js';
   import { navigate } from '../lib/router.svelte.js';
   import { subscribeToGroup } from '../lib/events.js';
 
@@ -26,6 +29,14 @@
     retry: false
   }));
 
+  // La sortie en préparation, ou null. Sans elle, on ne peut pas voter.
+  const fetchOuting = () => api.get(`/groups/${id}/outings/planned`).then((body) => body.outing);
+  const outing = createQuery(() => ({
+    queryKey: ['outing', id],
+    queryFn: fetchOuting,
+    retry: false
+  }));
+
   let tab = $state('liste'); // 'liste' | 'choisir'
   let selected = $state(null);
   let showMembers = $state(false);
@@ -34,18 +45,32 @@
   let busy = $state(false);
   let error = $state(null);
   let live = $state(false);
+  // Panneaux ouverts par-dessus l'onglet de la sortie.
+  let dateSheet = $state(null); // null | 'prevoir' | 'deplacer'
+  let confirmCancel = $state(false);
+  let conflict = $state(null); // message de l'API quand une sortie est prévue un autre jour
 
   // Flux temps réel : toute modification faite par un autre membre recharge la
   // liste. Le tirage, lui, s'affiche chez tout le monde en même temps.
   $effect(() => {
     const groupId = id;
     const refresh = () => queryClient.invalidateQueries({ queryKey: ['restaurants', groupId] });
+    // Une sortie qui change peut changer la liste : les voix repartent de
+    // zéro après une annulation, le restaurant passe « déjà fait » à la clôture.
+    const refreshOuting = () => {
+      queryClient.invalidateQueries({ queryKey: ['outing', groupId] });
+      refresh();
+    };
 
     const unsubscribe = subscribeToGroup(groupId, {
       connected: () => (live = true),
       votes_changed: refresh,
       restaurants_changed: refresh,
-      draw_result: (payload) => (drawResult = payload)
+      outing_changed: refreshOuting,
+      draw_result: (payload) => {
+        drawResult = payload;
+        queryClient.invalidateQueries({ queryKey: ['outing', groupId] });
+      }
     });
 
     return () => {
@@ -62,6 +87,27 @@
     await queryClient.invalidateQueries({ queryKey: ['restaurants', id] });
   }
 
+  async function refreshOuting() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['outing', id] }),
+      refreshList()
+    ]);
+  }
+
+  /** Enveloppe commune des actions : un seul clic à la fois, erreur affichée. */
+  async function run(action) {
+    if (busy) return;
+    busy = true;
+    error = null;
+    try {
+      await action();
+    } catch (e) {
+      error = e.message;
+    } finally {
+      busy = false;
+    }
+  }
+
   async function vote(restaurant) {
     if (busy) return;
     busy = true;
@@ -75,30 +121,68 @@
     }
   }
 
-  async function decide(mode) {
-    if (busy) return;
-    busy = true;
-    error = null;
-    try {
+  function decide(mode) {
+    return run(async () => {
       // Le résultat arrive aussi par le flux temps réel ; l'affecter ici évite
       // d'attendre l'aller-retour pour celui qui a appuyé.
-      drawResult = await api.post(`/groups/${id}/draw?mode=${mode}`);
-    } catch (e) {
-      error = e.message;
-    } finally {
-      busy = false;
-    }
+      drawResult = await api.post(`/outings/${outing.data.id}/decide?mode=${mode}`);
+      await refreshOuting();
+    });
   }
 
-  async function clearVotes() {
-    if (busy) return;
-    busy = true;
-    try {
-      await api.del(`/groups/${id}/votes`);
-      await refreshList();
-    } finally {
-      busy = false;
-    }
+  function plan(date) {
+    return run(async () => {
+      await api.post(`/groups/${id}/outings`, { plannedFor: date });
+      dateSheet = null;
+      await refreshOuting();
+    });
+  }
+
+  function reschedule(date) {
+    return run(async () => {
+      await api.patch(`/outings/${outing.data.id}`, { plannedFor: date });
+      dateSheet = null;
+      await refreshOuting();
+    });
+  }
+
+  function cancelOuting() {
+    return run(async () => {
+      await api.post(`/outings/${outing.data.id}/cancel`);
+      confirmCancel = false;
+      await refreshOuting();
+    });
+  }
+
+  /**
+   * « Choisir ce soir » : l'API crée la sortie du jour et tire au sort d'un
+   * coup. Si une sortie est prévue un autre jour, elle répond 409 et on
+   * propose de l'avancer plutôt que d'échouer.
+   */
+  function drawTonight() {
+    return run(async () => {
+      try {
+        drawResult = await api.post(`/groups/${id}/outings/tonight?mode=hasard`);
+      } catch (e) {
+        if (e.status !== 409) throw e;
+        conflict = e.message;
+      }
+      await refreshOuting();
+    });
+  }
+
+  function moveToTonightAndDraw() {
+    return run(async () => {
+      // Relue plutôt que prise dans le cache : un autre membre a pu la
+      // modifier entre-temps.
+      const current = await queryClient.fetchQuery({ queryKey: ['outing', id], queryFn: fetchOuting });
+      if (current) {
+        await api.patch(`/outings/${current.id}`, { plannedFor: todayInParis() });
+      }
+      conflict = null;
+      drawResult = await api.post(`/groups/${id}/outings/tonight?mode=hasard`);
+      await refreshOuting();
+    });
   }
 
   async function toggleStatus() {
@@ -146,14 +230,19 @@
     setTimeout(() => (shareFeedback = null), 2500);
   }
 
+  const decided = $derived(Boolean(outing.data?.restaurant));
+  const plannedTonight = $derived(outing.data?.plannedFor === todayInParis());
+
   const sousTitre = $derived(
     !restaurants.data
       ? null
       : tab === 'liste'
         ? `${aTester.length} adresse${aTester.length > 1 ? 's' : ''} à tester`
-        : totalVotes === 0
-          ? 'Personne n\'a encore voté'
-          : `${totalVotes} voix exprimée${totalVotes > 1 ? 's' : ''}`
+        : !outing.data
+          ? 'Aucune sortie prévue'
+          : totalVotes === 0
+            ? 'Personne n\'a encore voté'
+            : `${totalVotes} voix exprimée${totalVotes > 1 ? 's' : ''}`
   );
 </script>
 
@@ -188,7 +277,7 @@
             : 'border-line text-muted'}"
           onclick={() => (tab = 'choisir')}
         >
-          Choisir ce soir
+          La sortie
         </button>
       </div>
 
@@ -217,7 +306,39 @@
             {/each}
           </div>
         {/if}
+      {:else if outing.isPending}
+        <div class="flex flex-1 items-center justify-center">
+          <p class="font-display text-2xl text-muted">Un instant...</p>
+        </div>
+      {:else if outing.isError}
+        <div class="flex flex-1 flex-col items-center justify-center text-center">
+          <p class="text-sm text-accent">{outing.error.message}</p>
+        </div>
+      {:else if !outing.data}
+        <div class="flex flex-1 flex-col items-center justify-center text-center">
+          <p class="font-display text-3xl text-teal">Aucune sortie prévue</p>
+          <p class="mt-3 max-w-xs text-sm leading-relaxed text-muted">
+            Prévois une date pour ouvrir le vote. Ou, si c'est pour ce soir et
+            que personne ne veut décider, laisse le sort choisir.
+          </p>
+          {#if aTester.length === 0}
+            <p class="mt-3 max-w-xs text-xs leading-relaxed text-accent">
+              Aucune adresse à tester pour l'instant : ajoutes-en une avant de tirer au sort.
+            </p>
+          {/if}
+        </div>
+
+        {#if error}
+          <p class="mt-4 text-center text-xs text-accent">{error}</p>
+        {/if}
       {:else}
+        <OutingCard
+          outing={outing.data}
+          disabled={busy}
+          onreschedule={() => (dateSheet = 'deplacer')}
+          oncancel={() => (confirmCancel = true)}
+        />
+
         <div class="mb-2 flex items-baseline justify-between gap-3">
           <h2 class="font-display text-2xl text-teal">Les votes</h2>
           {#if live}
@@ -245,15 +366,6 @@
             {/each}
           </div>
 
-          {#if totalVotes > 0}
-            <button
-              class="mt-4 w-full py-1 text-xs text-muted underline underline-offset-4"
-              onclick={clearVotes}
-              disabled={busy}
-            >
-              Effacer tous les votes
-            </button>
-          {/if}
         {/if}
 
         {#if error}
@@ -269,13 +381,30 @@
         <ChalkButton onclick={() => navigate(`/groupes/${id}/ajouter`)}>
           {#snippet children()}+ Ajouter une adresse{/snippet}
         </ChalkButton>
-      {:else if aTester.length > 0}
+      {:else if outing.isSuccess && !outing.data}
+        <ChalkButton onclick={() => (dateSheet = 'prevoir')} disabled={busy}>
+          {#snippet children()}Prévoir une sortie{/snippet}
+        </ChalkButton>
+        <ChalkButton variant="teal" onclick={drawTonight} disabled={busy || aTester.length === 0}>
+          {#snippet children()}Choisir ce soir{/snippet}
+        </ChalkButton>
+      {:else if outing.data && aTester.length > 0}
+        <!-- Trancher à nouveau remplace le choix : c'est un rattrapage, pas une nouvelle sortie. -->
         <ChalkButton onclick={() => decide('votes')} disabled={busy}>
-          {#snippet children()}Trancher selon les votes{/snippet}
+          {#snippet children()}{decided ? 'Trancher à nouveau selon les votes' : 'Trancher selon les votes'}{/snippet}
         </ChalkButton>
         <ChalkButton variant="teal" onclick={() => decide('hasard')} disabled={busy}>
-          {#snippet children()}Tirer au sort{/snippet}
+          {#snippet children()}{decided ? 'Retirer au sort' : 'Tirer au sort'}{/snippet}
         </ChalkButton>
+        {#if !plannedTonight}
+          <button
+            class="w-full py-1 text-xs text-teal underline underline-offset-4"
+            onclick={drawTonight}
+            disabled={busy}
+          >
+            Finalement, on y va ce soir ?
+          </button>
+        {/if}
       {/if}
       <button
         class="w-full py-1 text-xs text-muted underline underline-offset-4"
@@ -286,6 +415,61 @@
     </div>
   {/snippet}
 </Board>
+
+{#if dateSheet === 'prevoir'}
+  <OutingDateSheet
+    title="Prévoir une sortie"
+    confirmLabel="Ouvrir le vote"
+    busy={busy}
+    {error}
+    onconfirm={plan}
+    onclose={() => (dateSheet = null)}
+  />
+{:else if dateSheet === 'deplacer' && outing.data}
+  <OutingDateSheet
+    title="Changer la date"
+    confirmLabel="Déplacer la sortie"
+    initial={outing.data.plannedFor}
+    busy={busy}
+    {error}
+    onconfirm={reschedule}
+    onclose={() => (dateSheet = null)}
+  />
+{/if}
+
+{#if confirmCancel}
+  <Sheet title="Annuler la sortie ?" onclose={() => (confirmCancel = false)}>
+    {#snippet children()}
+      <p class="mb-5 text-sm leading-relaxed text-muted">
+        Les votes de cette sortie seront perdus. Vous pourrez en prévoir une autre aussitôt.
+      </p>
+      <div class="space-y-3">
+        <ChalkButton onclick={cancelOuting} disabled={busy}>
+          {#snippet children()}Oui, annuler{/snippet}
+        </ChalkButton>
+        <ChalkButton variant="muted" onclick={() => (confirmCancel = false)}>
+          {#snippet children()}Garder la sortie{/snippet}
+        </ChalkButton>
+      </div>
+    {/snippet}
+  </Sheet>
+{/if}
+
+{#if conflict}
+  <Sheet title="Une sortie est déjà prévue" onclose={() => (conflict = null)}>
+    {#snippet children()}
+      <p class="mb-5 text-sm leading-relaxed text-muted">{conflict}</p>
+      <div class="space-y-3">
+        <ChalkButton onclick={moveToTonightAndDraw} disabled={busy}>
+          {#snippet children()}L'avancer à ce soir et tirer au sort{/snippet}
+        </ChalkButton>
+        <ChalkButton variant="muted" onclick={() => (conflict = null)}>
+          {#snippet children()}Garder la date prévue{/snippet}
+        </ChalkButton>
+      </div>
+    {/snippet}
+  </Sheet>
+{/if}
 
 {#if drawResult}
   <DrawResultSheet result={drawResult} onclose={() => (drawResult = null)} />

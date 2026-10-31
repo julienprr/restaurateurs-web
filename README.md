@@ -36,6 +36,7 @@ lib/
   router.svelte.js   routeur maison, History API, match('/groupes/:id')
   events.js          abonnement au flux temps réel (SSE)
   invite.js          normalisation des codes d'invitation
+  outings.js         dates des sorties, à l'heure de Paris comme l'API
 
 lib/components/
   Board.svelte       cadre en pointillés, titre, pied de page
@@ -45,12 +46,15 @@ lib/components/
   Sheet.svelte       panneau qui monte du bas
   ChoiceChips.svelte choix rapides (cuisine, budget)
   DrawResultSheet.svelte  annonce du verdict
+  OutingCard.svelte  la sortie prévue : date, restaurant choisi, actions
+  OutingDateSheet.svelte  choix d'une date, pour prévoir ou déplacer
 
 routes/
   Login.svelte       saisie de l'email, demande du lien
   Verify.svelte      consomme le lien magique
   Home.svelte        mes groupes, créer, rejoindre
-  Group.svelte       écran principal : liste et vote, deux onglets
+  Group.svelte       écran principal, deux onglets : la liste, et la
+                     sortie (prévoir, voter, trancher, choisir ce soir)
   AddRestaurant.svelte  collage du lien Maps, puis fiche
   Join.svelte        aperçu d'une invitation
 ```

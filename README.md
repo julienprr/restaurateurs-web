@@ -50,6 +50,7 @@ lib/components/
   OutingDateSheet.svelte  choix d'une date, pour prévoir ou déplacer
   PastOutings.svelte l'onglet « Nos sorties » : historique et notes
   RatingSheet.svelte donner ou modifier sa note
+  Ranking.svelte     le classement, en haut de « Nos sorties »
 
 routes/
   Login.svelte       saisie de l'email, demande du lien
@@ -57,7 +58,7 @@ routes/
   Home.svelte        mes groupes, créer, rejoindre
   Group.svelte       écran principal, trois onglets : la liste, la
                      sortie (prévoir, voter, trancher, choisir ce soir),
-                     et nos sorties (historique, notes)
+                     et nos sorties (classement, historique, notes)
   AddRestaurant.svelte  collage du lien Maps, puis fiche
   Join.svelte        aperçu d'une invitation
 ```

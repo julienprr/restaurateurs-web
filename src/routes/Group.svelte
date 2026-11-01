@@ -58,13 +58,16 @@
     const refresh = () => queryClient.invalidateQueries({ queryKey: ['restaurants', groupId] });
     // Une sortie qui change peut changer la liste : les voix repartent de
     // zéro après une annulation, le restaurant passe « déjà fait » à la clôture.
-    // Une sortie close rejoint l'historique.
+    // Une sortie close rejoint l'historique, et une note change le classement.
+    const refreshPast = () => {
+      queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['ranking', groupId] });
+    };
     const refreshOuting = () => {
       queryClient.invalidateQueries({ queryKey: ['outing', groupId] });
-      queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] });
+      refreshPast();
       refresh();
     };
-    const refreshPast = () => queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] });
 
     const unsubscribe = subscribeToGroup(groupId, {
       connected: () => (live = true),

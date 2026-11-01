@@ -1,13 +1,14 @@
 <script>
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import RatingSheet from './RatingSheet.svelte';
+  import Ranking from './Ranking.svelte';
   import { api } from '../api.js';
   import { formatDay } from '../outings.js';
 
   /**
    * L'onglet « Nos sorties » : les sorties passées, chacune avec ses notes.
    * Tout le monde peut noter, sans limite de temps, et voit les notes des
-   * autres. Le classement viendra s'ajouter ici (étape 4).
+   * autres. Le classement est affiché au-dessus de l'historique.
    */
   let { groupId } = $props();
 
@@ -16,6 +17,12 @@
   const past = createQuery(() => ({
     queryKey: ['past-outings', groupId],
     queryFn: () => api.get(`/groups/${groupId}/outings`),
+    retry: false
+  }));
+
+  const ranking = createQuery(() => ({
+    queryKey: ['ranking', groupId],
+    queryFn: () => api.get(`/groups/${groupId}/ranking`),
     retry: false
   }));
 
@@ -40,7 +47,10 @@
     error = null;
     try {
       await api.put(`/outings/${rating.outing.id}/rating`, { score, comment });
-      await queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['past-outings', groupId] }),
+        queryClient.invalidateQueries({ queryKey: ['ranking', groupId] })
+      ]);
       rating = null;
     } catch (e) {
       error = e.message;
@@ -66,6 +76,11 @@
     </p>
   </div>
 {:else}
+  {#if ranking.data?.restaurants.length > 0}
+    <Ranking ranking={ranking.data} />
+  {/if}
+
+  <h2 class="font-display text-2xl text-teal">Nos sorties</h2>
   <div>
     {#each past.data as entry (entry.outing.id)}
       {@const mine = myRating(entry)}

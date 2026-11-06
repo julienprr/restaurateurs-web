@@ -4,6 +4,7 @@
   import { api } from '../lib/api.js';
   import { navigate, param } from '../lib/router.svelte.js';
   import { setUser } from '../lib/session.svelte.js';
+  import { takeDestination } from '../lib/afterLogin.js';
 
   import { onMount } from 'svelte';
 
@@ -22,7 +23,8 @@
       const data = await api.get(`/auth/verify?token=${encodeURIComponent(token)}`);
       setUser(data.user);
       // replace : revenir en arrière ne doit pas rejouer un lien consommé.
-      navigate(data.inviteCode ? `/rejoindre/${data.inviteCode}` : '/', { replace: true });
+      const destination = takeDestination();
+      navigate(data.inviteCode ? `/rejoindre/${data.inviteCode}` : (destination ?? '/'), { replace: true });
     } catch (e) {
       error = e.message;
     }

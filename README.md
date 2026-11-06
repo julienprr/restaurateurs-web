@@ -37,6 +37,7 @@ lib/
   events.js          abonnement au flux temps réel (SSE)
   invite.js          normalisation des codes d'invitation
   outings.js         dates des sorties, à l'heure de Paris comme l'API
+  afterLogin.js      retour à la page d'un lien d'email après connexion
 
 lib/components/
   Board.svelte       cadre en pointillés, titre, pied de page
@@ -55,10 +56,12 @@ lib/components/
 routes/
   Login.svelte       saisie de l'email, demande du lien
   Verify.svelte      consomme le lien magique
-  Home.svelte        mes groupes, créer, rejoindre
+  Unsubscribe.svelte couper les emails depuis un email, sans connexion
+  Home.svelte        mes groupes, créer, rejoindre, réglage des emails
   Group.svelte       écran principal, trois onglets : la liste, la
                      sortie (prévoir, voter, trancher, choisir ce soir),
-                     et nos sorties (classement, historique, notes)
+                     et nos sorties (classement, historique, notes).
+                     ?onglet=sortie ou sorties ouvre l'onglet voulu
   AddRestaurant.svelte  collage du lien Maps, puis fiche
   Join.svelte        aperçu d'une invitation
 ```

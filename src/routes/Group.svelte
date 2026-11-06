@@ -11,7 +11,7 @@
   import PastOutings from '../lib/components/PastOutings.svelte';
   import { api } from '../lib/api.js';
   import { todayInParis } from '../lib/outings.js';
-  import { navigate } from '../lib/router.svelte.js';
+  import { navigate, param } from '../lib/router.svelte.js';
   import { subscribeToGroup } from '../lib/events.js';
 
   let { id } = $props();
@@ -38,7 +38,9 @@
     retry: false
   }));
 
-  let tab = $state('liste'); // 'liste' | 'choisir' | 'sorties'
+  // Les emails ouvrent directement le bon onglet : ?onglet=sortie ou sorties.
+  const TABS_FROM_LINK = { sortie: 'choisir', sorties: 'sorties' };
+  let tab = $state(TABS_FROM_LINK[param('onglet')] ?? 'liste'); // 'liste' | 'choisir' | 'sorties'
   let selected = $state(null);
   let showMembers = $state(false);
   let drawResult = $state(null);

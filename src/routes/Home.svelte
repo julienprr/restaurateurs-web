@@ -14,6 +14,21 @@
     queryFn: () => api.get('/groups')
   }));
 
+  // Les emails de sortie, que chacun peut couper ou rétablir.
+  const notifications = createQuery(() => ({
+    queryKey: ['notifications'],
+    queryFn: () => api.get('/auth/me').then((body) => body.notificationsEnabled)
+  }));
+
+  async function toggleNotifications() {
+    try {
+      await api.put('/notifications', { enabled: !notifications.data });
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   let mode = $state(null); // null | 'creer' | 'rejoindre'
   let groupName = $state('');
   let inviteCode = $state('');
@@ -167,6 +182,14 @@
         <ChalkButton variant="teal" onclick={() => (mode = 'rejoindre')}>
           {#snippet children()}J'ai un code d'invitation{/snippet}
         </ChalkButton>
+        {#if notifications.isSuccess}
+          <p class="text-center text-xs text-muted">
+            Emails des sorties : {notifications.data ? 'activés' : 'coupés'} ·
+            <button class="underline underline-offset-4" onclick={toggleNotifications}>
+              {notifications.data ? 'Couper' : 'Rétablir'}
+            </button>
+          </p>
+        {/if}
         <button class="w-full py-1 text-xs text-muted underline underline-offset-4" onclick={logout}>
           Se déconnecter
         </button>

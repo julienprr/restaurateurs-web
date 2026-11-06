@@ -10,6 +10,8 @@
   import Group from './routes/Group.svelte';
   import AddRestaurant from './routes/AddRestaurant.svelte';
   import Join from './routes/Join.svelte';
+  import Unsubscribe from './routes/Unsubscribe.svelte';
+  import { rememberDestination } from './lib/afterLogin.js';
 
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -34,11 +36,21 @@
       navigate(`/?invite=${joinRoute.code}`, { replace: true });
     }
   });
+
+  // Un lien d'email vers un groupe, ouvert sans session : on y reviendra
+  // après la connexion.
+  $effect(() => {
+    if (!session.loading && !session.user && groupRoute) {
+      rememberDestination(route.path + route.search);
+    }
+  });
 </script>
 
 <QueryClientProvider client={queryClient}>
   {#if route.path === '/auth/verify'}
     <Verify />
+  {:else if route.path === '/desinscription'}
+    <Unsubscribe />
   {:else if session.loading}
     <Board title="Les Restaurateurs">
       {#snippet children()}
